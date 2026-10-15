@@ -1,0 +1,119 @@
+# S16 国家统计局官方 RSS 接入验收
+
+正式本地 RSS 元数据与证据闭环通过，真实新发布推送仍等待样本。
+
+官方[订阅说明](https://www.stats.gov.cn/wzgl/rss/202302/t20230217_1912859.html)与[服务条款](https://www.stats.gov.cn/wzgl/202302/t20230217_1912857.html)已实际检查。限定本地免费资料研究、RSS 阅读与受限审计缓存，页面仅显示原始中文标题/时间/来源/链接，不发布文章正文、署名文章或第三方作品，不授予商业再分发权。登记核验时间、依据、用途和 90 天期限。
+
+两个栏目均 HTTP 200，UTF-8 XML；最新发布 500 条、数据解读 500 条，首次入库 1000 条，均历史回填。真实发布时间按 Asia/Shanghai 严格解析，没有用采集时间覆盖。再次采集 1000 条，新增 0、重复 1000。实际跨栏目同一证据 0；隔离测试覆盖两栏目同原文 URL 共用一个业务事件。
+
+初始 Java PKIX/TLS 失败真实保留，未生成业务数据；随后使用本项目 JVM 的 Windows-ROOT 信任库成功，未关闭证书或主机校验、未修改系统证书。完整 RSS 响应单独保存并计算 SHA-256，条目保留精确原响应字节并建立引用，避免每条重复保存整份 4 MB 以上 XML。原文内容变更可产生新版本；正式本轮未制造修订，隔离测试验证保留旧版。
+
+审计快照：2026-10-09T22:29:21.942934+08:00。后台仍在运行，以下数字不是固定实时行情，也不是目标预填数量。
+
+| 来源 | 等级 | 业务记录 | 当前对应证据 |
+|---|---|---:|---:|
+| 欧洲央行 | L0 | 29 | 29 |
+| 欧洲央行官方经济数据 | L0 | 263 | 263 |
+| 美联储官方新闻 | L0 | 21 | 21 |
+| FRED 宏观指标 | L0 | 0 | 0 |
+| 全球事件发现 | L2 | 15085 | 15085 |
+| 国家统计局官方公告 | L0 | 1000 | 1000 |
+| SEC 公司申报 | L0 | 0 | 0 |
+
+业务记录 16398 条，其中宏观观测 263 个；新闻与聚合线索 16135 条。原始证据 16398 份，哈希错误 0，完整 HTTP 响应哈希错误 0，正式 Fixture 0。
+
+已核实研究事件 0；名称有官方证据的发布机构 3（不是已核实上市公司数量）；已核实关系 0、待审核关系 0。GDELT 非待核验证据 0，没有将 L2 改成 L0。
+
+
+实际验收与命令：
+
+- `mvn.cmd -s scripts/maven-settings.xml -f backend/pom.xml package`：89 项通过，失败/错误/跳过均为 0；见 [最终后端日志](evidence/s22-final-package.log)。
+- `npm.cmd test`、`npm.cmd run build`：前端 5 项与构建通过；见 [前端日志](evidence/s22-frontend-final.log)。
+- `npx.cmd playwright test`：正式只读浏览器 6 项通过；见 [浏览器日志](evidence/s22-browser-final.log)。
+- 独立 55432 测试库：`npx.cmd playwright test --config=playwright-isolated.config.ts`，1 项双客户端真实事务推送通过；见 [隔离日志](evidence/s22-isolated-browser.log)。
+- `node scripts/verify-official-macro-evidence.mjs`：263 个值/单位/日期/频率与实际 CSV 一致，1000 个 RSS 条目字节确实在完整响应中。
+- `node scripts/check-live-stream.mjs`：真实历史回放 8877 条/客户端、恢复补读 4439 条；该次较早快照中真实新增新闻 0，不是当前新增数量。
+- `scripts/backup-restore-drill.ps1 -RestoreDrill`：恢复 15937 份证据，原始哈希/ZIP 哈希/引用错误均 0；导出与恢复清单 c2d88de67d92fb7a5fe7bc263e2fa8f13edb873759761fe04a8bf3ab08870825。独立恢复库 huankan_restore_0680dde39e7d4039ba8f0a37e1ca831f，正式库未覆盖。
+- `scripts/check-persistence.ps1`：15938 份证据重启前后清单一致，健康 UP。
+
+真实新增样本：[美联储官方原文](https://www.federalreserve.gov/newsevents/pressreleases/other20261009a.htm) HTTP 200；证据 86f1ea2c-bf57-470d-8df5-c7dec3c15324，SHA-256 dec37ffc570ac8905fc37387e6b4063078b6f1e9d07975a1166230b0931dfd9c。双客户端持久回放接收确认通过；不是提交时在线浏览器推送验收。详见 [新增实际记录](evidence/s22-real-new-official-replay.json)。
+
+以上快照时间不同：备份 15937 份、重启 15938 份、回放 8877 条、当前审计 16398 份；数量增长来自持续采集，不能把不同快照写成同一次测试。
+
+真实证据样例：
+
+- ECB：Euro area bank interest rate statistics: July 2026
+  - 证据 b5b37d7b-11f9-40db-afdf-3a6b6d74f363，发布 2026-09-02T16:00:00+08:00，采集 2026-10-09T11:49:53.72632+08:00
+  - [原始官方/批次来源](https://www.ecb.europa.eu//press/stats/mfi/html/ecb.mir260902~d54675e442.en.html)
+  - SHA-256：a219aca569e753cc02ddaca11d9651b7bab9c5a6f5f243b0aa01a34ac833e2c9，版本 1，HISTORICAL_BACKFILL
+- NBS：国家统计局工业司统计师于卫宁解读工业企业利润数据
+  - 证据 81b64977-c48f-4148-bf0b-4459c5812f6c，发布 2024-04-27T09:30:00+08:00，采集 2026-10-09T16:53:35.238467+08:00
+  - [原始官方/批次来源](https://www.stats.gov.cn/sj/sjjd/202404/t20240427_1948754.html)
+  - SHA-256：b2dce0e023c481892f0b5ad5bf3171c5e0bed702530fecb10a73e912691f16f2，版本 1，HISTORICAL_BACKFILL
+- ECB_DATA：Chinese yuan renminbi/Euro ECB reference exchange rate · 2026-10-09 · 7.4992 · A
+  - 证据 97c846de-af4a-45a8-89b2-8318131859ae，发布 未提供（不补造），采集 2026-10-09T21:57:49.814768+08:00
+  - [原始官方/批次来源](https://data-api.ecb.europa.eu/service/data/EXR/D.CNY.EUR.SP00.A)
+  - SHA-256：102782fe6c84346cb66ef23607219957e0369b6da0adf037965f45413dad262e，版本 1，HISTORICAL_BACKFILL
+- FED：Federal Reserve Board releases results of the 2025 Survey of Consumer Finances, which provides the public and policymakers with detailed insights into the economic condition of American families
+  - 证据 86f1ea2c-bf57-470d-8df5-c7dec3c15324，发布 2026-10-09T22:00:00+08:00，采集 2026-10-09T22:04:32.798471+08:00
+  - [原始官方/批次来源](https://www.federalreserve.gov/newsevents/pressreleases/other20261009a.htm)
+  - SHA-256：dec37ffc570ac8905fc37387e6b4063078b6f1e9d07975a1166230b0931dfd9c，版本 1，NEW_EVENT
+- GDELT：GDELT聚合线索 · oklahomawatch.org · USPEC_POLICY1;EPU_CATS_TAXES;ECON_INFLATION;WB_1104_MACROECONOMIC_VULNERABILITY_AND_DEBT;WB_442_INFLATION;LEADER;TAX_FNCACT;TAX_FNCACT_LEGISLATORS;TAX
+  - 证据 7b9f91f7-e11e-4653-8cb7-ada76a51f239，发布 未提供（不补造），采集 2026-10-09T22:20:20.086645+08:00
+  - [原始官方/批次来源](https://data.gdeltproject.org/gdeltv2/20261009141500.gkg.csv.zip)
+  - SHA-256：fbe7a7b382c64c48c63a95146024c53fb876441e1498fb0d1799231077006ecb，版本 1，HISTORICAL_BACKFILL
+
+仍未完成或未实证验收：
+
+- 真实新增官方新闻样本 1；美联储新增实际记录已完成正式入库及双客户端持久回放 ACK，但提交时在线浏览器自动推送未实证。等待下一条真实新增事件的在线验收，不能以回放或隔离测试替代。
+- SEC：SEC 联系邮箱尚未配置，自动采集未启用；FRED：FRED API Key尚未配置，自动采集未启用。没有真实凭证或相关序列许可，继续关闭。
+- 正式上市公司证券映射、客户/供应商/股权及真实产业链关系尚无可审核实证；当前关系 0，不生成占位关系。
+- 跨文章语义事件合并、自动检索新官方文件、系统性的矛盾证据搜集尚未交付；当前规则提供 URL 文章组和人工证据关联。
+- AI Provider 未配置；没有翻译质量、摘要质量或模型正确率验收，不生成中文译文或影响结论。
+- ECB 已核查 updatedAfter、If-Modified-Since 与 includeHistory 官方说明；本次使用 90 天窗口重同步和本地版本保存，未开启官方全历史版本下载。窗口外修订回补与高效网络增量同步仍需后续实施。
+- Windows 系统级开机任务/服务未注册，按用户要求需明确范围并获批准；当前仅有本项目进程的观察/可选恢复脚本。进程自动恢复、PostgreSQL 故障恢复的生产故障注入尚未验证。
+- 实际观察 900.615 秒，另有政策数据版本 180.986 秒短观察；不能称为数小时、跨日或长期稳定性通过。远程异地备份尚未实施。
+
+本轮实际新增/修改代码与脚本（各任务交叉复用，不代表全工作区均由本轮创建）：
+
+- `scripts/verify-real-new-replay.mjs`
+- `README.md`
+- `backend/src/main/resources/db/migration/V14__official_macro_and_research.sql`
+- `backend/src/main/resources/db/migration/V15__research_evidence_guards.sql`
+- `backend/src/main/resources/db/migration/V16__official_policy_series.sql`
+- `backend/src/main/java/cn/huankan/collector/OfficialHttpClient.java`
+- `backend/src/main/java/cn/huankan/collector/RssAdapter.java`
+- `backend/src/main/java/cn/huankan/collector/CollectorService.java`
+- `backend/src/main/java/cn/huankan/collector/NbsCollector.java`
+- `backend/src/main/java/cn/huankan/collector/SdmxCsv.java`
+- `backend/src/main/java/cn/huankan/collector/EcbDataCollector.java`
+- `backend/src/main/java/cn/huankan/evidence/EvidenceService.java`
+- `backend/src/main/java/cn/huankan/event/QueryService.java`
+- `backend/src/main/java/cn/huankan/event/ResearchRules.java`
+- `backend/src/main/java/cn/huankan/event/ResearchService.java`
+- `backend/src/main/java/cn/huankan/event/ResearchScheduler.java`
+- `backend/src/main/java/cn/huankan/event/ResearchController.java`
+- `backend/src/test/java/cn/huankan/collector/MacroAdaptersTest.java`
+- `backend/src/test/java/cn/huankan/event/ResearchRulesTest.java`
+- `backend/src/test/java/cn/huankan/evidence/DatabaseGateTest.java`
+- `frontend/src/components/VirtualEvents.vue`
+- `frontend/src/App.vue`
+- `frontend/src/components/ResearchDesk.vue`
+- `frontend/src/api/client.ts`
+- `frontend/src/style.css`
+- `frontend/playwright.config.ts`
+- `frontend/e2e/real-feed.spec.ts`
+- `frontend/e2e/research.spec.ts`
+- `scripts/capture-research-baseline.mjs`
+- `scripts/capture-research-state.mjs`
+- `scripts/process-research-history.mjs`
+- `scripts/verify-official-macro-evidence.mjs`
+- `scripts/sql/official-macro-license-local.sql`
+- `scripts/start-services.ps1`
+- `scripts/watch-huankan.ps1`
+- `scripts/observe-runtime.mjs`
+- `scripts/export-evidence-backup.mjs`
+- `scripts/backup-restore-drill.ps1`
+- `scripts/write-research-reports.mjs`
+
+机器审计依据：[实际数据库快照](evidence/s22-research-state.json)、[原始响应复核](evidence/s22-official-response-verification.json)、[基线清单](evidence/s15-baseline.json)。

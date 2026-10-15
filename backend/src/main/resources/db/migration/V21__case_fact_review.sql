@@ -1,0 +1,6 @@
+ALTER TABLE research_case_fact ADD CONSTRAINT case_fact_status CHECK(status IN('PENDING','VERIFIED','CONFLICT','REJECTED'));
+CREATE TABLE case_review(id bigserial PRIMARY KEY,case_id uuid NOT NULL REFERENCES research_case(id),fact_id uuid REFERENCES research_case_fact(id),decision text NOT NULL,reason text NOT NULL,actor text NOT NULL,created_at timestamptz NOT NULL DEFAULT clock_timestamp());
+CREATE FUNCTION case_fact_evidence_guard() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+ IF NEW.status='VERIFIED' AND NOT EXISTS(SELECT 1 FROM raw_evidence r JOIN source_registry s ON s.id=r.source_id JOIN source_license l ON l.source_id=s.id WHERE r.id=NEW.evidence_id AND s.level='L0' AND l.status='APPROVED' AND l.storage_allowed AND (l.valid_until IS NULL OR l.valid_until>now()) AND r.raw_content_hash=encode(sha256(r.raw_content),'hex') AND substring(convert_from(r.raw_content,'UTF8') FROM NEW.start_offset+1 FOR NEW.end_offset-NEW.start_offset)=NEW.excerpt) THEN RAISE EXCEPTION 'Verified case facts require exact intact licensed official evidence'; END IF;
+ RETURN NEW;END $$;
+CREATE TRIGGER case_fact_verified BEFORE INSERT OR UPDATE ON research_case_fact FOR EACH ROW EXECUTE FUNCTION case_fact_evidence_guard();

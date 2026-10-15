@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+const read=p=>JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,'')),hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\..*/,''),prefix=`docs/evidence/s69-r2-summary-${stamp}`;
+const main=fs.readFileSync('runtime/s70-main.log','utf8');
+function redact(text){for(const key of ['HUANKAN_DB_PASSWORD','HUANKAN_TEST_DB_PASSWORD','HUANKAN_ADMIN_TOKEN','AI_API_KEY']){const value=process.env[key];if(value)text=text.replaceAll(value,'[已脱敏]');}return text.replace(/(jdbc:postgresql:\/\/[^\s?]+)\?[^\s]+/g,'$1?[连接参数已脱敏]');}
+const failures=main.split(/(?=^2026-\d\d-\d\dT)/m).filter(block=>block.startsWith('2026-10-14')&&block.includes('SQLTransientConnectionException: HikariPool')).map(block=>{
+ const pool=block.match(/request timed out after (\d+)ms \(total=(\d+), active=(\d+), idle=(\d+), waiting=(\d+)\)/);
+ return {at:block.match(/^\S+/)?.[0],scope:block.match(/at cn\.huankan\.([^\s(]+)/)?.[1]??'原链未指明业务方法',scheduled:/\[\s*scheduling-\d/.test(block),pool:pool?{wait_ms:Number(pool[1]),total:Number(pool[2]),active:Number(pool[3]),idle:Number(pool[4]),pending:Number(pool[5])}:null,sql_state:null,error_code:null,unknown_reason:'正式旧日志未输出SQLState或驱动错误码，不反写隔离值',exception_chain:redact(block)};
+});
+const scenarios=fs.readFileSync('runtime/s69-r2-backend-final.log','utf8').split(/\r?\n/).filter(x=>x.startsWith('S69_R1 ')).map(x=>JSON.parse(x.slice(7)));
+const frozen=read('docs/evidence/s69-r1-final-index-20261013T115021.json'),delivery=read('docs/evidence/s69-r1-delivery-20261013T120843.json');
+const snapshot_checks=[...frozen.manifest,...delivery.manifest].map(x=>({path:x.snapshot,expected:x.sha256,actual:hash(x.snapshot),match:hash(x.snapshot)===x.sha256}));
+const original_source_checks=frozen.manifest.map(x=>{const bytes=fs.readFileSync(x.source),snapshot=fs.readFileSync(x.snapshot);return {path:x.source,append_only_or_unchanged:bytes.length>=snapshot.length&&bytes.subarray(0,snapshot.length).equals(snapshot),source_bytes:bytes.length,frozen_bytes:snapshot.length};});
+const copy=prefix+'-formal-java.log';fs.copyFileSync('runtime/s70-main.log',copy,fs.constants.COPYFILE_EXCL);
+const report={at:new Date().toISOString(),formal_faults:{count:failures.length,first:failures[0]?.at,last:failures.at(-1)?.at,scheduler_count:failures.filter(x=>x.scheduled).length,max_pending:Math.max(0,...failures.map(x=>x.pool?.pending||0)),failures},scenarios,snapshot_checks,original_source_checks,candidate:{jar:'backend/target/huankan-s69-r2-candidate-0.1.0.jar',sha256:hash('backend/target/huankan-s69-r2-candidate-0.1.0.jar')},formal:{jar:'backend/target/huankan-s70-reviewed-0.1.0.jar',sha256:hash('backend/target/huankan-s70-reviewed-0.1.0.jar')},raw_log:{file:copy,sha256:hash(copy)},contract:{file:'docs/evidence/s69-r2-next-window-contract.json',sha256:hash('docs/evidence/s69-r2-next-window-contract.json')}};
+fs.writeFileSync(prefix+'.json',JSON.stringify(report,null,2),{flag:'wx'});console.log(JSON.stringify({file:prefix+'.json',faults:report.formal_faults.count,first:report.formal_faults.first,last:report.formal_faults.last,scheduler:report.formal_faults.scheduler_count,max_pending:report.formal_faults.max_pending,scenarios:scenarios.length,frozen:snapshot_checks.length,mismatch:snapshot_checks.filter(x=>!x.match).length,source_changed:original_source_checks.filter(x=>!x.append_only_or_unchanged).length}));

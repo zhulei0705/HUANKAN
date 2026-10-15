@@ -1,0 +1,9 @@
+package cn.huankan.event;
+import org.junit.jupiter.api.Test;import java.util.*;import java.math.*;import static org.junit.jupiter.api.Assertions.*;
+class MacroComparisonTest {
+ Map<String,Object> row(String day,String value){var f=new HashMap<String,Object>(Map.of("indicator_id","TEST_ONLY","unit","指数","frequency","M","seasonal_adjustment","SA","unit_multiplier","0"));var r=new HashMap<String,Object>();r.put("source_fields",f);r.put("unit","指数");r.put("frequency","M");r.put("observation_date",day);r.put("value",value==null?null:new BigDecimal(value));return r;}
+ @Test void consecutiveMonthlyAndYearlyChangesUseRealInputs(){var r=MacroComparison.compare(List.of(row("2026-10-01","110"),row("2026-09-01","100"),row("2025-10-01","100")));assertEquals(new BigDecimal("10"),r.get("difference"));assertEquals(0,new BigDecimal("10").compareTo((BigDecimal)r.get("mom_percent_change")));assertNotNull(r.get("yoy_input"));assertNull(r.get("surprise"));}
+ @Test void gapsNeverClaimMonthOnMonth(){var r=MacroComparison.compare(List.of(row("2026-10-01","110"),row("2026-08-01","100")));assertNull(r.get("mom_percent_change"));assertEquals(false,r.get("consecutive"));}
+ @Test void mismatchedSeasonalAdjustmentOrMultiplierBlocksCalculation(){for(String key:List.of("unit","frequency","seasonal_adjustment","unit_multiplier","indicator_id")){var b=row("2026-09-01","100");((Map<String,Object>)b.get("source_fields")).put(key,"DIFFERENT");assertNull(MacroComparison.compare(List.of(row("2026-10-01","110"),b)).get("difference"));}}
+ @Test void zeroAndMissingValuesNeverCreateInfiniteReturns(){assertNull(MacroComparison.compare(List.of(row("2026-10-01","1"),row("2026-09-01","0"))).get("percent_change"));assertNull(MacroComparison.compare(List.of(row("2026-10-01",null),row("2026-09-01","1"))).get("difference"));}
+}

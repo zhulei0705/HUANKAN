@@ -1,0 +1,17 @@
+import {test,expect} from '@playwright/test';import {fileURLToPath} from 'node:url';
+test('正式原子事实、真实法人身份与规则研判在桌面和手机对应数据库响应',async({page})=>{
+ const token=process.env.HUANKAN_ADMIN_TOKEN;if(!token)throw Error('本地访问密钥未配置');await page.goto('/');await expect(page.locator('.connection')).toContainText('已连接');await expect(page.getByLabel('推送订阅')).toHaveValue('OFFICIAL');
+ await page.getByRole('button',{name:'金融事实引擎',exact:false}).click();await expect(page.getByRole('heading',{name:'全球金融事实引擎'})).toBeVisible();const response=page.waitForResponse(r=>r.url().endsWith('/api/facts/query')&&r.request().postDataJSON().type==='MACRO_OBSERVATION');await page.getByLabel('事实类型').selectOption('MACRO_OBSERVATION');const actual=await(await response).json();expect(actual.length).toBeGreaterThan(0);expect(actual.length).toBeLessThanOrEqual(50);await expect(page.locator('[data-fact-id]')).toHaveCount(actual.length);const first=actual[0];await expect(page.locator(`[data-fact-id="${first.id}"]`)).toContainText(first.fields.indicator_id);await expect(page.locator(`[data-fact-id="${first.id}"]`)).toContainText(String(first.fields.actual_value));await expect(page.locator(`[data-fact-id="${first.id}"]`)).toContainText('字段一致性通过');
+ await page.locator(`[data-fact-id="${first.id}"]`).getByRole('button',{name:'查看原始证据'}).click();await expect(page.locator('.fact-detail')).toContainText(first.raw_content_hash);await expect(page.locator('.fact-detail')).toContainText(first.excerpt);await page.locator('.fact-engine').scrollIntoViewIfNeeded();await page.screenshot({path:fileURLToPath(new URL('../../docs/evidence/s65-regression-s62-regression-s55-unified-regression-facts-desktop.png',import.meta.url))});
+ await page.getByRole('button',{name:'全球法人身份',exact:true}).click();await expect(page.getByText('法人登记字段确认',{exact:false}).first()).toBeVisible();await expect(page.locator('.fact-engine')).toContainText('Apple Inc.');await page.getByRole('button',{name:'查看身份历史与证据'}).first().click();await expect(page.locator('.fact-detail').getByRole('link',{name:'查看原始来源'}).first()).toHaveAttribute('href',/^https:\/\/api\.gleif\.org\/api\/v1\/lei-records\/[A-Z0-9]{20}$/);
+ await page.locator('.fact-engine').getByRole('button',{name:'金融事件研判',exact:true}).click();await expect(page.locator('.fact-engine article').first()).toBeVisible();await page.getByRole('button',{name:'查看研判证据与局限'}).first().click();await expect(page.locator('.fact-detail')).toContainText('市场验证状态');await expect(page.locator('.fact-detail')).toContainText('待验证，没有生成行情');
+ await page.setViewportSize({width:390,height:844});await page.locator('.fact-engine').scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:fileURLToPath(new URL('../../docs/evidence/s65-regression-s62-regression-s55-unified-regression-facts-mobile.png',import.meta.url))});
+});
+
+// Respect the unchanged shared API request budget during the full browser regression.
+test.afterEach(async()=>{await new Promise(resolve=>setTimeout(resolve,15000));});
+
+// Pace acceptance requests within the existing 120/minute service budget.
+test.beforeEach(async({page})=>{await page.waitForTimeout(8000);});
+
+

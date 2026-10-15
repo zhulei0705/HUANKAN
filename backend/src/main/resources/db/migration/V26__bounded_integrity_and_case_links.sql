@@ -1,0 +1,4 @@
+CREATE TABLE evidence_integrity_check(evidence_id uuid PRIMARY KEY REFERENCES raw_evidence(id),checked_at timestamptz NOT NULL,expected_hash text NOT NULL,actual_hash text NOT NULL,passed boolean NOT NULL);
+CREATE INDEX evidence_integrity_pending ON evidence_integrity_check(checked_at);
+CREATE TABLE research_case_link(id uuid PRIMARY KEY,left_case_id uuid NOT NULL REFERENCES research_case(id),right_case_id uuid NOT NULL REFERENCES research_case(id),kind text NOT NULL CHECK(kind IN('POTENTIAL_SAME_FACT','FOLLOW_UP','RELATED','CONFLICT')),evidence_id uuid NOT NULL REFERENCES raw_evidence(id),excerpt text NOT NULL,reason text NOT NULL,status text NOT NULL DEFAULT 'PENDING' CHECK(status IN('PENDING','CONFIRMED','REJECTED')),created_at timestamptz NOT NULL DEFAULT now(),CHECK(left_case_id<>right_case_id));
+-- Links are reviewable dependencies; no fuzzy similarity merge or destruction of messages.

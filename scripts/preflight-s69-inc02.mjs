@@ -1,0 +1,23 @@
+import fs from 'node:fs';import crypto from 'node:crypto';import {sql} from './s46-db.mjs';
+const dir='docs/evidence/s69-inc02';const report={at:new Date().toISOString(),checks:[]};const read=p=>JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,''));
+const check=(name,passed,details)=>report.checks.push({name,passed,details});process.env.PGCONNECT_TIMEOUT='5';
+const query=q=>sql(`BEGIN READ ONLY; SET LOCAL statement_timeout='3s'; SET LOCAL lock_timeout='1s'; ${q}; COMMIT;`);
+if(process.env.HUANKAN_DB_URL!=='jdbc:postgresql://127.0.0.1:5432/huankan'||process.env.HUANKAN_DB_USER!=='huankan_app')throw Error('正式连接不匹配，拒绝查询');
+const identity=query(`SELECT json_build_object('port',inet_server_port(),'database',current_database(),'started_at',pg_postmaster_start_time(),'at',clock_timestamp())`);
+check('原共享数据库身份及启动时间',identity.port===5432&&identity.database==='huankan'&&identity.started_at==='2026-10-12T18:05:15.712373+08:00',identity);
+const migrations=query(`SELECT json_agg(t) FROM(SELECT version,checksum,success FROM flyway_schema_history ORDER BY installed_rank)t`);
+const old=read('docs/evidence/s69-r4-capacity-20261014T051519.json').settings.migrations;
+check('51项Flyway与冻结基线完全一致',migrations.length===51&&old.every(x=>migrations.some(y=>x.version===y.version&&x.checksum===y.checksum&&y.success)),migrations);
+for(const [file,expected] of [['backend/target/huankan-s70-reviewed-0.1.0.jar','197022ff189d8b29816cbc06df1591c7694bd068d0da1134326a524da1af2e77'],['backend/target/huankan-s69-r3-candidate-0.1.0.jar','a579d4fd7c7f974b4a89532c97490f784446547409bec7d58dedffecaa721d61']]){const actual=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');check(file,actual===expected,{expected,actual});}
+const ecb=query(`SELECT json_build_object('job',(SELECT to_jsonb(j) FROM ingestion_job j WHERE id='987eaebe-b88d-41f9-a3b2-4f50eaea6eee'),'lease',(SELECT to_jsonb(l) FROM collector_lease l WHERE source_id='ECB'),'raw_count',(SELECT count(*) FROM raw_evidence WHERE job_id='987eaebe-b88d-41f9-a3b2-4f50eaea6eee'),'outbox',(SELECT max(id) FROM stream_outbox),'audit_cursor',(SELECT last_outbox FROM notification_audit_cursor WHERE name='LIVE_RULE_AUDIT'))`);
+const baseline=read(`${dir}/formal-readonly.json`).queries.find(q=>q.name==='ecb').result;
+check('ECB现场未被本轮修改',JSON.stringify(ecb.job)===JSON.stringify(baseline.job)&&JSON.stringify(ecb.lease)===JSON.stringify(baseline.lease)&&ecb.raw_count===0,ecb);
+check('原版隔离恢复测试',read(`${dir}/recovery-tests-r3.json`).passed,`${dir}/recovery-tests-r3.json`);
+check('原版隔离HTTP/SSE及鉴权',read(`${dir}/http-tests.json`).passed,`${dir}/http-tests.json`);
+check('进程身份保护',read(`${dir}/live-identity-tests.json`).passed,`${dir}/live-identity-tests.json`);
+check('原版JMX池与告警判定',read(`${dir}/observability-tests.json`).passed,`${dir}/observability-tests.json`);
+const gate=read(`${dir}/recovery-gate.json`);
+check('独立托管实际验收',gate.hostValidated===true,'当前仅模板和直接父启动器退出测试；未注册系统任务');
+check('正式任务写入与启动授权',gate.formalWriteApproval===true&&gate.formalStartApproved===true,'本轮用户明确禁止');
+report.originalRecovery='No-Go';report.r3Deployment='No-Go';report.frontend5173='No-Go';report.new24h='No-Go';report.executedRecovery=false;report.formalDatabaseWritten=false;
+const file=`${dir}/database-preflight-${Date.now()}.json`;fs.writeFileSync(file,JSON.stringify(report,null,2),{flag:'wx'});console.log(JSON.stringify({file,checks:report.checks.map(x=>({name:x.name,passed:x.passed})),originalRecovery:report.originalRecovery},null,2));

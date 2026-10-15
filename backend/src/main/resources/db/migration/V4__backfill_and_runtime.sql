@@ -1,0 +1,13 @@
+ALTER TABLE raw_evidence ADD COLUMN collected_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE raw_evidence ADD COLUMN ingestion_kind text NOT NULL DEFAULT 'HISTORICAL_BACKFILL' CHECK(ingestion_kind IN ('HISTORICAL_BACKFILL','NEW_EVENT','REVISION'));
+ALTER TABLE financial_event ADD COLUMN ingestion_kind text NOT NULL DEFAULT 'HISTORICAL_BACKFILL' CHECK(ingestion_kind IN ('HISTORICAL_BACKFILL','NEW_EVENT','REVISION'));
+ALTER TABLE stream_outbox ADD COLUMN notification_kind text NOT NULL DEFAULT 'HISTORICAL_BACKFILL';
+ALTER TABLE source_cursor ADD COLUMN monitoring_started_at timestamptz;
+ALTER TABLE ingestion_job ADD COLUMN fetched_count integer NOT NULL DEFAULT 0;
+ALTER TABLE ingestion_job ADD COLUMN duplicate_count integer NOT NULL DEFAULT 0;
+ALTER TABLE ingestion_job ADD COLUMN quarantine_count integer NOT NULL DEFAULT 0;
+ALTER TABLE source_license ADD COLUMN usage_scope text NOT NULL DEFAULT 'UNCONFIRMED';
+CREATE TABLE sec_company_registry(cik char(10) PRIMARY KEY, title text NOT NULL, ticker text NOT NULL, source_url text NOT NULL, collected_at timestamptz NOT NULL, raw_hash char(64) NOT NULL);
+CREATE TABLE sec_followed_company(cik char(10) PRIMARY KEY REFERENCES sec_company_registry(cik), added_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX event_update_idx ON financial_event(updated_at DESC,id);
+CREATE INDEX job_source_started_idx ON ingestion_job(source_id,started_at DESC);

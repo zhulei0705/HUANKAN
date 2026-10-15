@@ -1,0 +1,7 @@
+CREATE OR REPLACE VIEW collection_task_accounting AS SELECT j.id,j.source_id,j.status task_status,j.new_count declared_new,j.fetched_count declared_fetched,j.duplicate_count declared_duplicates,j.error_code,j.started_at,j.finished_at,
+ COALESCE(r.saved,0) committed_raw_records,COALESCE(r.positions,0) committed_outbox_positions,
+ CASE WHEN j.status='FAILED' AND COALESCE(r.saved,0)>0 THEN 'PARTIAL_COMMITTED' WHEN j.status='FAILED' THEN 'NO_RECORD_COMMIT' WHEN j.status='RUNNING' THEN 'IN_PROGRESS' ELSE 'TASK_FINISHED' END commit_state,
+ CASE WHEN j.status<>'RUNNING' AND j.new_count<>COALESCE(r.saved,0)+COALESCE(h.saved,0) THEN 'COUNTER_MISMATCH' ELSE 'MATCHED_OR_RUNNING' END counter_state,
+ COALESCE((SELECT count(*) FROM collector_batch_commit c WHERE c.job_id=j.id),0) recorded_committed_batches,
+ CASE WHEN EXISTS(SELECT 1 FROM collector_batch_commit c WHERE c.job_id=j.id) THEN 'TRANSACTION_RECEIPTS' ELSE 'HISTORICAL_RAW_PROVENANCE_ONLY' END batch_count_basis,COALESCE(h.saved,0) committed_history_versions,CASE WHEN EXISTS(SELECT 1 FROM macro_history_request mr WHERE mr.job_id=j.id) THEN 'LOCAL_HISTORY_VERSIONS' ELSE 'RAW_EVIDENCE_VERSIONS' END count_unit
+ FROM ingestion_job j LEFT JOIN LATERAL(SELECT count(DISTINCT r.id) saved,count(DISTINCT o.id) positions FROM raw_evidence r LEFT JOIN stream_outbox o ON o.evidence_id=r.id WHERE r.job_id=j.id)r ON true LEFT JOIN LATERAL(SELECT count(*) saved FROM macro_history_version v JOIN macro_history_request mr ON mr.id=v.request_id WHERE mr.job_id=j.id)h ON true;

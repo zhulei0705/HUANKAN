@@ -1,0 +1,27 @@
+.env
+**/target/
+**/node_modules/
+**/dist/
+runtime/
+*.log
+playwright-report/
+test-results/
+
+# 本机凭证、构建输出和调试产物
+.env.*
+!.env.example
+**/dist-*/
+**/dist-development/
+**/test-results-*/
+__pycache__/
+*.py[cod]
+*.class
+*.jar
+*.war
+*.hprof
+hs_err_pid*.log
+replay_pid*.log
+
+# 原始事故日志、数据库导出、会话与冻结二进制仅留本机
+/docs/evidence/*
+!/docs/evidence/README.md

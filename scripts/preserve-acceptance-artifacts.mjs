@@ -1,0 +1,4 @@
+import {readdirSync,readFileSync,writeFileSync,mkdirSync,copyFileSync,existsSync,constants} from 'node:fs';import {createHash} from 'node:crypto';
+const target='runtime/acceptance-artifact-store';mkdirSync(target,{recursive:true});const files=[];
+function visit(dir){for(const entry of readdirSync(dir,{withFileTypes:true})){const path=dir+'/'+entry.name;if(entry.isDirectory())visit(path);else if(path.endsWith('.png')){const hash=createHash('sha256').update(readFileSync(path)).digest('hex'),backup=target+'/'+hash+'.png';if(!existsSync(backup))copyFileSync(path,backup,constants.COPYFILE_EXCL);if(createHash('sha256').update(readFileSync(backup)).digest('hex')!==hash)throw Error('截图副本哈希不匹配');files.push({path,sha256:hash,backup});}}}
+visit('docs/evidence');writeFileSync('docs/evidence/s62-artifact-preservation.json',JSON.stringify({captured_at:new Date().toISOString(),scope:'当前实际截图内容寻址副本；不能恢复此前已经覆盖的S54截图',files},null,2));console.log(`已保留${files.length}张当前截图并逐一核验副本哈希`);

@@ -1,0 +1,8 @@
+<script setup lang="ts">
+import {ref,onMounted,onUnmounted} from 'vue';import {post} from '../api/client';import {time} from '../presentation/zh';
+const props=defineProps<{token:string}>();type Row=Record<string,any>;const rows=ref<Row[]>([]),error=ref(''),busy=ref(false),before=ref(0),timer=ref<ReturnType<typeof setInterval>>();
+async function load(){if(busy.value)return;busy.value=true;try{rows.value=await post('/watch/updates/query',props.token,{before:before.value});error.value='';}catch(e){error.value=(e as Error).message;}finally{busy.value=false;}}
+async function read(id:number){try{await post('/watch/updates/read',props.token,{id});await load();}catch(e){error.value=(e as Error).message;}}
+onMounted(()=>{void load();timer.value=setInterval(()=>{if(!document.hidden&&before.value===0)void load();},30000);});onUnmounted(()=>clearInterval(timer.value));
+</script>
+<template><section class="panel feed"><h2>关注更新与站内提醒</h2><p>数据库保留通知原因与阅读状态，断线后可补读。每30秒检查一次；个人研究动作与真实官方更新分别标记，不计为真实LIVE双端样本。</p><p v-if="error" role="alert">{{error}}</p><button :disabled="busy" @click="before=0;load()">刷新最新更新</button><p v-if="!rows.length">尚无符合关注与通知资格的持久化更新。</p><article v-for="r in rows" :key="r.id"><h3>{{r.kind==='OFFICIAL_UPDATE'?'官方证据更新':'个人研究工作状态更新'}}</h3><p>{{time(r.created_at)}} · {{r.read_at?'已读':'未读'}}</p><p>{{r.reason.replace('RESEARCHING','研究中').replace('ARCHIVED','个人归档')}}</p><a :href="'#/research?event='+r.event_id">查看事件历史与证据</a><button v-if="!r.read_at" @click="read(r.id)">标记已读</button></article><button :disabled="busy||rows.length<50" @click="before=rows[rows.length-1].id;load()">查看更早更新</button></section></template>

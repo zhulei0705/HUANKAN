@@ -1,0 +1,12 @@
+<script setup lang="ts">
+import {ref,watch} from 'vue';import {post} from '../api/client';import {time} from '../presentation/zh';
+const props=defineProps<{id:string;token?:string}>();const data=ref<Record<string,any>>(),error=ref(''),busy=ref(false),reason=ref(''),followed=ref(false),watchId=ref('');
+const labels:Record<string,string>={DISCOVERED:'新发现',PENDING:'待核验',SOURCE_CHECKED:'官方来源确认',FIELD_MATCHED:'事实字段已核对',INDEPENDENT_SUPPORTED:'独立证据支持',EXTRACTED:'已提取待核验',NEW_EVIDENCE:'出现新证据',REVISED:'已修订',CONFLICT:'证据冲突',RESEARCHING:'研究中',ARCHIVED:'个人已归档',REJECTED:'已否决',INSUFFICIENT:'证据不足'};
+async function load(){data.value=await post('/practical/lifecycle/query',props.token||'',{id:props.id});const watches=await post<Record<string,any>[]>('/watch/query',props.token||'');const w=watches.find(w=>w.kind==='EVENT'&&w.value===props.id&&w.enabled);followed.value=!!w;watchId.value=w?.id||'';}
+async function run(fn:()=>Promise<void>){if(busy.value)return;busy.value=true;error.value='';try{await fn();}catch(e){error.value=(e as Error).message;}finally{busy.value=false;}}
+async function follow(){await run(async()=>{if(followed.value)await post('/watch/remove',props.token||'',{id:watchId.value});else await post('/watch/add',props.token||'',{kind:'EVENT',value:props.id,label:'事件 '+props.id,includeLeads:false,minimumPriority:0});await load();});}
+async function action(state:string){await run(async()=>{data.value=await post('/practical/lifecycle/action',props.token||'',{id:props.id,state,reason:reason.value});reason.value='';});}
+watch(()=>props.id,()=>{data.value=undefined;void run(load);},{immediate:true});
+</script>
+<template><section class="panel"><h3>持续关注与事件复盘</h3><button :disabled="busy" @click="follow">{{followed?'取消事件关注':'关注此事件'}}</button><p>关注保存在数据库。提醒需通过真实新事件及来源资格检查，历史回填不计实时提醒。</p><label>实际研究动作说明 <textarea v-model="reason" placeholder="填写至少10字的实际研究或归档理由" maxlength="1000"/></label><button :disabled="busy||reason.trim().length<10" @click="action('RESEARCHING')">记录开始研究</button><button :disabled="busy||reason.trim().length<10" @click="action('ARCHIVED')">记录个人归档</button><p v-if="error" role="alert">{{error}}</p><template v-if="data"><p>{{data.boundary}}</p><article v-for="(r,n) in data.timeline" :key="n"><p>{{time(r.at)}} · {{labels[r.state]||'待核查'}} · {{r.reason}}</p><code v-if="r.evidence_id">证据 {{r.evidence_id}}</code></article></template></section></template>
+<style scoped>textarea{width:100%;min-height:60px}code{overflow-wrap:anywhere}article{margin:12px 0}</style>

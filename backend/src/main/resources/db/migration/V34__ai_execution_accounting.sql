@@ -1,0 +1,10 @@
+ALTER TABLE ai_analysis ADD COLUMN provider text;
+ALTER TABLE ai_analysis ADD COLUMN model_version text;
+ALTER TABLE ai_analysis ADD COLUMN input_tokens bigint CHECK(input_tokens>=0);
+ALTER TABLE ai_analysis ADD COLUMN output_tokens bigint CHECK(output_tokens>=0);
+ALTER TABLE ai_analysis ADD COLUMN actual_cost numeric CHECK(actual_cost>=0);
+ALTER TABLE ai_analysis ADD COLUMN cost_currency text;
+ALTER TABLE ai_analysis ADD COLUMN cost_basis text;
+ALTER TABLE ai_analysis ADD COLUMN source_citations jsonb NOT NULL DEFAULT '[]';
+ALTER TABLE ai_analysis ADD COLUMN request_budget integer CHECK(request_budget>=0);
+ALTER TABLE ai_analysis ADD COLUMN max_output_tokens integer CHECK(max_output_tokens>0);

@@ -1,0 +1,24 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {pathToFileURL} from 'node:url';
+const run=promisify(execFile),candidate=JSON.parse(fs.readFileSync('runtime/s69-r1-candidate.json'));
+const report={at:new Date().toISOString(),scope:'只读跨进程时钟补测；未修改时间或启动同步服务',measurements:[],metrics:[],security:[]},browsers=[];
+async function measure(name,fn){const before=Date.now();try{const result=await fn();const after=Date.now(),remote=Date.parse(result.at);report.measurements.push({name,...result,local_before:new Date(before).toISOString(),local_after:new Date(after).toISOString(),round_trip_ms:after-before,offset_interval_ms:[remote-after,remote-before],midpoint_offset_ms:remote-(before+after)/2});}catch(e){report.measurements.push({name,error:String(e)});}}
+async function post(port,route,token){const r=await fetch(`http://127.0.0.1:${port}/api/${route}`,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(4000)});if(!r.ok)throw Error('HTTP '+r.status);return r.json();}
+try{
+ for(let i=0;i<3;i++)await measure('Windows重复'+i,async()=>{const {stdout}=await run('powershell.exe',['-NoProfile','-Command',"@{at=(Get-Date).ToUniversalTime().ToString('o');timezone=[TimeZoneInfo]::Local.Id}|ConvertTo-Json -Compress"],{encoding:'utf8',timeout:3000});return JSON.parse(stdout);});
+ for(let i=0;i<3;i++)await measure('正式Java精确Instant重复'+i,async()=>{const r=await post(18080,'stream/browser/clock',process.env.HUANKAN_ADMIN_TOKEN);return {at:r.serverTime,timezone:'API Instant以UTC序列化；正式JVM默认时区未独立读取',source:'原有受保护/stream/browser/clock，无SQL和业务写入'};});
+ await measure('隔离Java精确Instant',async()=>{const r=await post(18088,'reliability/status','isolated-s69-r1-test-token-32-characters');return {at:r.at,timezone:r.timezone,pool:r.pool};});
+ for(const port of [5432,55432])await measure('PostgreSQL'+port,async()=>{const isolated=port===55432;const {stdout}=await run('D:/Program Files/PostgreSQL/18/bin/psql.exe',['-h','127.0.0.1','-p',String(port),'-U',isolated?process.env.HUANKAN_TEST_DB_USER:process.env.HUANKAN_DB_USER,'-d',isolated?'huankan_test':'huankan','-w','-Atq','-v','ON_ERROR_STOP=1','-c',"BEGIN READ ONLY; SET LOCAL statement_timeout='2s'; SELECT json_build_object('at',clock_timestamp(),'timezone',current_setting('TimeZone'),'database',current_database(),'port',inet_server_port()); COMMIT;"],{encoding:'utf8',timeout:3000,env:{...process.env,PGPASSWORD:isolated?process.env.HUANKAN_TEST_DB_PASSWORD:process.env.HUANKAN_DB_PASSWORD}});return JSON.parse(stdout);});
+ const {chromium}=await import(pathToFileURL(path.join(candidate.work,'node_modules/playwright/index.mjs')).href);
+ for(let i=0;i<2;i++){const browser=await chromium.launch({headless:true});browsers.push(browser);const page=await browser.newPage();await measure('独立Chromium'+i,()=>page.evaluate(()=>({at:new Date().toISOString(),timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,scope:'运行环境时钟；在线连接与真实渲染另见完整短时探针'})));}
+ for(const route of ['/actuator/metrics','/api/reliability/status']){const r=await fetch('http://127.0.0.1:18088'+route,{...(route.startsWith('/api/')?{method:'POST',body:'{}',headers:{'Content-Type':'application/json'}}:{}),signal:AbortSignal.timeout(3000)});report.security.push({route,without_credential_http:r.status});}
+ for(const name of ['huankan.jdbc.active','huankan.jdbc.idle','huankan.jdbc.pending','huankan.jdbc.maximum','huankan.jdbc.acquire','huankan.jdbc.acquire.timeouts','huankan.jdbc.errors','huankan.jdbc.hold','huankan.jdbc.sql','huankan.jdbc.transaction','huankan.scheduler.duration']){const r=await fetch('http://127.0.0.1:18088/actuator/metrics/'+name,{headers:{Authorization:'Bearer isolated-s69-r1-test-token-32-characters'},signal:AbortSignal.timeout(3000)});report.metrics.push({name,http:r.status,value:r.ok?await r.json():null,missing_policy:'不存在的序列保持缺失，不补正常值'});}
+ const successful=report.measurements.filter(x=>!x.error);
+ report.fastest_windows=successful.filter(x=>x.name.startsWith('Windows')).sort((a,b)=>a.round_trip_ms-b.round_trip_ms)[0];
+ report.fastest_formal_java=successful.filter(x=>x.name.startsWith('正式Java')).sort((a,b)=>a.round_trip_ms-b.round_trip_ms)[0];
+ report.selection_rule='保留所有重复测量，使用最短往返时延收紧区间；不把中点当已确认真实偏差';
+ report.internal_clock_bound_passed=successful.length===11&&[report.fastest_windows,report.fastest_formal_java,...successful.filter(x=>!x.name.startsWith('Windows')&&!x.name.startsWith('正式Java'))].every(x=>x.offset_interval_ms.every(v=>Math.abs(v)<=1000));
+}finally{for(const browser of browsers)await browser.close();const file='docs/evidence/s69-r3-clock-'+Date.now()+'.json';fs.writeFileSync(file,JSON.stringify(report,null,2),{flag:'wx'});console.log(JSON.stringify({file,internal_clock_bound_passed:report.internal_clock_bound_passed,metrics:report.metrics.map(x=>({name:x.name,http:x.http})),security:report.security}));}

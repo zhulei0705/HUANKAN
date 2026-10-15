@@ -1,0 +1,23 @@
+import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
+const read=p=>JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,'')),hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\..*/,''),file=`docs/evidence/s69-r4-delivery-${stamp}.json`,directory=`docs/evidence/s69-r4-delivery-${stamp}-files`;
+const prior=['s69-r1-final-index-20261013T115021.json','s69-r1-delivery-20261013T120843.json','s69-r2-delivery-20261014T014238.json','s69-r3-delivery-20261014T041942.json'].map(n=>{const p='docs/evidence/'+n,index=read(p);return {file:p,sha256:hash(p),count:index.manifest.length,mismatches:index.manifest.filter(x=>!fs.existsSync(x.snapshot)||hash(x.snapshot)!==x.sha256)};});
+const r3=read('docs/evidence/s69-r3-delivery-20261014T041942.json');
+const backend=r3.manifest.filter(x=>/^backend[\\/]src[\\/]/.test(x.source)||x.source==='backend/pom.xml').map(x=>({source:x.source,match:hash(x.source)===x.sha256}));
+const old=read('docs/evidence/s69-r2-static-hashes.json');
+const frontend=old.protected_sources.map(x=>({file:x.file,match:hash(path.join('frontend',x.file))===hash(path.join('runtime/s69-r2-rollback/20261014T012640/frontend',x.file))}));
+const candidate=read('runtime/s69-r1-candidate.json'),manifest=read(path.join(candidate.release,'manifest.json'));
+const assets=manifest.files.map(x=>({file:x.path,match:hash(path.join(candidate.release,x.path))===x.sha256}));
+const checks={at:new Date().toISOString(),prior,backend_source_checks:backend,protected_frontend:frontend,static_assets:assets,static_manifest_match:hash(path.join(candidate.release,'manifest.json'))===candidate.manifest_sha256,formal_jar:hash('backend/target/huankan-s70-reviewed-0.1.0.jar'),candidate_jar:hash('backend/target/huankan-s69-r3-candidate-0.1.0.jar')};
+const checkFile='docs/evidence/s69-r4-final-preservation.json';fs.writeFileSync(checkFile,JSON.stringify(checks,null,2),{flag:'wx'});
+const docs=['S69-R4-正式数据库容量评估.md','S69-R4-慢IO与连接持有分析.md','S69-R4-隔离容量和部署预演.md','S69-R4-Go-NoGo正式部署决策.md','统一开发状态报告.md'].map(x=>'docs/'+x);
+for(const doc of docs)fs.appendFileSync(doc,`\n\n本轮交付[冻结副本与SHA256索引](evidence/${path.basename(file)})保留成功、失败、中断、未完成及No-Go结论；[最终保全核验](evidence/s69-r4-final-preservation.json)不修改R1/R2/R3旧清单。\n`);
+fs.mkdirSync(directory);
+const sources=new Set([...docs,'backend/target/huankan-s69-r3-candidate-0.1.0.jar']);
+for(const dir of ['docs/evidence','runtime','scripts'])for(const name of fs.readdirSync(dir))if(name.includes('s69-r4')&&name!==path.basename(file)&&fs.statSync(path.join(dir,name)).isFile())sources.add(path.join(dir,name));
+for(const name of fs.readdirSync('backend/target/surefire-reports'))if(name.startsWith('TEST-')||name.endsWith('.txt'))sources.add('backend/target/surefire-reports/'+name);
+const rows=[];let i=0;for(const source of [...sources].sort()){const snapshot=path.join(directory,String(i++).padStart(4,'0')+path.extname(source)).replaceAll('\\','/');fs.copyFileSync(source,snapshot,fs.constants.COPYFILE_EXCL);rows.push({source,snapshot,bytes:fs.statSync(snapshot).size,sha256:hash(snapshot)});}
+fs.writeFileSync(file,JSON.stringify({at:new Date().toISOString(),decision:'No-Go',scope:'R4评审冻结；未部署正式Java/切5173/开启24小时/S67；实际未完成测试不标通过',checks:checkFile,manifest:rows},null,2),{flag:'wx'});
+const mismatches=prior.reduce((n,p)=>n+p.mismatches.length,0)+backend.filter(x=>!x.match).length+frontend.filter(x=>!x.match).length+assets.filter(x=>!x.match).length;
+console.log(JSON.stringify({file,sha256:hash(file),files:rows.length,prior:prior.map(({mismatches,...p})=>({...p,mismatch:mismatches.length})),backend_files:backend.length,protected_frontend:frontend.length,assets:assets.length,mismatches}));
+if(mismatches)process.exitCode=1;

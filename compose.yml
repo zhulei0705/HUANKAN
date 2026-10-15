@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    ports: ["127.0.0.1:5432:5432"]
+    environment:
+      POSTGRES_DB: huankan
+      POSTGRES_USER: huankan
+      POSTGRES_PASSWORD: ${HUANKAN_DB_PASSWORD:?请设置数据库密码}
+    volumes: ["huankan-pg:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U huankan -d huankan"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  huankan-pg:

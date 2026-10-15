@@ -1,0 +1,15 @@
+-- Nullable means unknown: no company, ticker, legal name, or business relation is seeded.
+CREATE TABLE entity_profile_version(id uuid PRIMARY KEY,entity_id uuid NOT NULL REFERENCES financial_entity(id),legal_name text,display_name_zh text,original_name text NOT NULL,country text,official_identifier text,evidence_id uuid NOT NULL REFERENCES raw_evidence(id),valid_from timestamptz,valid_to timestamptz,review_status text NOT NULL DEFAULT 'PENDING' CHECK(review_status IN('PENDING','VERIFIED','CONFLICT','EXPIRED')),created_at timestamptz NOT NULL DEFAULT now(),CHECK(valid_to IS NULL OR valid_from IS NULL OR valid_to>valid_from));
+CREATE TABLE security_profile_version(id uuid PRIMARY KEY,entity_id uuid NOT NULL REFERENCES financial_entity(id),exchange_id uuid REFERENCES financial_entity(id),ticker text,issuer_id uuid REFERENCES financial_entity(id),listing_status text NOT NULL DEFAULT 'UNKNOWN',identifier_valid_from timestamptz,identifier_valid_to timestamptz,evidence_id uuid NOT NULL REFERENCES raw_evidence(id),created_at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE financial_entity DROP CONSTRAINT financial_entity_type_check;
+ALTER TABLE financial_entity ADD CONSTRAINT financial_entity_type_check CHECK(type IN('COUNTRY','REGION','CENTRAL_BANK','REGULATOR','ORGANIZATION','COMPANY','SECURITY','INDEX','COMMODITY','CURRENCY','INDUSTRY','SECTOR','INDICATOR','EXCHANGE','FUND'));
+ALTER TABLE entity_relation DROP CONSTRAINT entity_relation_type_check;
+ALTER TABLE entity_relation ADD CONSTRAINT entity_relation_type_check CHECK(type IN('ISSUER','LISTED','INDUSTRY','BUSINESS','CUSTOMER','SUPPLIER','COMPETITOR','EQUITY','MATERIAL_DEPENDENCY','MACRO_SENSITIVITY','TRANSMISSION','PARTNER','PRODUCT','UPSTREAM','DOWNSTREAM','CAPEX','REGIONAL_REVENUE'));
+ALTER TABLE entity_relation ADD COLUMN relation_kind text NOT NULL DEFAULT 'BUSINESS_FACT' CHECK(relation_kind IN('BUSINESS_FACT','INDUSTRY_MEMBERSHIP','MACRO_HYPOTHESIS','AI_CANDIDATE','STATISTICAL'));
+CREATE TABLE relation_support(id bigserial PRIMARY KEY,relation_id uuid NOT NULL REFERENCES entity_relation(id),evidence_id uuid NOT NULL REFERENCES raw_evidence(id),excerpt text NOT NULL,source_url text NOT NULL,published_at timestamptz,review_status text NOT NULL DEFAULT 'PENDING',created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX profile_history ON entity_profile_version(entity_id,created_at DESC);
+ALTER TABLE entity_profile_version ADD COLUMN excerpt text NOT NULL;
+ALTER TABLE entity_relation ADD CONSTRAINT relation_kind_verified CHECK(status<>'VERIFIED' OR relation_kind IN('BUSINESS_FACT','INDUSTRY_MEMBERSHIP'));
+CREATE FUNCTION immutable_entity_profile() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Entity history is immutable'; END $$;
+CREATE TRIGGER entity_profile_immutable BEFORE UPDATE OR DELETE ON entity_profile_version FOR EACH ROW EXECUTE FUNCTION immutable_entity_profile();
+CREATE TRIGGER security_profile_immutable BEFORE UPDATE OR DELETE ON security_profile_version FOR EACH ROW EXECUTE FUNCTION immutable_entity_profile();

@@ -1,0 +1,12 @@
+package cn.huankan.collector;
+import java.util.*;import java.time.LocalDate;import java.math.BigDecimal;import java.io.ByteArrayInputStream;import javax.xml.parsers.DocumentBuilderFactory;import org.w3c.dom.*;
+public final class SdmxHistory {
+ public record Point(LocalDate date,BigDecimal value,String status,String action){}
+ public record Parsed(String prepared,String validFrom,String action,List<Point> points){}
+ private SdmxHistory(){}
+ public static Parsed parse(byte[] bytes)throws Exception{
+  var f=DocumentBuilderFactory.newInstance();f.setNamespaceAware(true);f.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true);f.setFeature("http://xml.org/sax/features/external-general-entities",false);f.setFeature("http://xml.org/sax/features/external-parameter-entities",false);f.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD,"");f.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA,"");var doc=f.newDocumentBuilder().parse(new ByteArrayInputStream(bytes));var sets=doc.getElementsByTagNameNS("*","DataSet");if(sets.getLength()!=1)throw new IllegalArgumentException("SDMX历史响应数据集不唯一");Element dataset=(Element)sets.item(0);String action=dataset.getAttribute("action");if(action.isBlank())action="Replace";if(!Set.of("Replace","Append","Information","Delete").contains(action))throw new IllegalArgumentException("未知SDMX数据集动作");
+  var points=new ArrayList<Point>();var obs=dataset.getElementsByTagNameNS("*","Obs");if(obs.getLength()>200000)throw new IllegalArgumentException("历史观测超过有界上限");for(int i=0;i<obs.getLength();i++){Element o=(Element)obs.item(i);var dim=o.getElementsByTagNameNS("*","ObsDimension");if(dim.getLength()!=1)throw new IllegalArgumentException("历史观测日期缺失");LocalDate date=LocalDate.parse(((Element)dim.item(0)).getAttribute("value"));var values=o.getElementsByTagNameNS("*","ObsValue");String raw=values.getLength()==0?"":((Element)values.item(0)).getAttribute("value");BigDecimal value=raw.isBlank()?null:new BigDecimal(raw);String status="";var attrs=o.getElementsByTagNameNS("*","Value");for(int j=0;j<attrs.getLength();j++){Element a=(Element)attrs.item(j);if("OBS_STATUS".equals(a.getAttribute("id")))status=a.getAttribute("value");}points.add(new Point(date,value,status,action));}
+  var prepared=doc.getElementsByTagNameNS("*","Prepared");return new Parsed(prepared.getLength()==0?null:prepared.item(0).getTextContent(),dataset.getAttribute("validFromDate"),action,List.copyOf(points));
+ }
+}

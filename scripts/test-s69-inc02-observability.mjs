@@ -1,0 +1,8 @@
+import fs from 'node:fs';import {evaluate} from './inc02/observability.mjs';
+const dir='docs/evidence/s69-inc02';const report={at:new Date().toISOString(),tests:[]};
+const base={identityValid:true,health:'UP',pool:{ActiveConnections:0,IdleConnections:2,TotalConnections:2,ThreadsAwaitingConnection:0},logTail:'',exitCode:null,ecbState:'OK',logWriting:true};
+const cases=[['正常样本',{},null],['池探针缺失不能计0',{pool:null},'POOL_PROBE_UNAVAILABLE'],['池等待告警',{pool:{ActiveConnections:1,IdleConnections:0,TotalConnections:1,ThreadsAwaitingConnection:1}},'JDBC_PENDING'],['健康失败告警',{health:'DOWN'},'HEALTH_UNAVAILABLE'],['退出码失败告警',{exitCode:1},'PROCESS_EXIT_FAILURE'],['正常停止仍提示停止',{exitCode:0},'PROCESS_STOPPED'],['身份变化告警',{identityValid:false},'PROCESS_IDENTITY_MISMATCH'],['悬挂ECB告警',{ecbState:'STALE_RUNNING'},'ECB_TASK_STALE'],['日志不落盘告警',{logWriting:false},'LOG_NOT_WRITING']];
+for(const [name,change,expected] of cases){const actual=evaluate({...base,...change});if(expected?!actual.alerts.includes(expected):actual.alerts.length!==0)throw Error(name);report.tests.push({name,passed:true,result:actual});}
+const log=fs.readFileSync(`${dir}/recovery-tests-r3.log`,'utf8');const actual=evaluate({...base,logTail:log});if(!actual.alerts.includes('JDBC_FAILURE'))throw Error('真实隔离获取超时未告警');report.tests.push({name:'真实隔离连接获取超时日志触发告警',passed:true,result:actual});
+const pool=JSON.parse(fs.readFileSync(`${dir}/original-pool-jmx.json`,'utf8').replace(/^\uFEFF/,''));if(pool.pools.length!==1)throw Error('原版池探针缺失');report.realOriginalPool=pool;report.count=report.tests.length;report.passed=true;
+fs.writeFileSync(`${dir}/observability-tests.json`,JSON.stringify(report,null,2),{flag:'wx'});console.log(JSON.stringify({count:report.count,pool},null,2));

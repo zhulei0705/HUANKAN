@@ -1,0 +1,38 @@
+server:
+  address: 127.0.0.1
+  port: 18080
+logging:
+  charset:
+    console: UTF-8
+spring:
+  task:
+    scheduling:
+      pool:
+        size: 4
+  datasource:
+    url: ${HUANKAN_DB_URL:jdbc:postgresql://127.0.0.1:5432/huankan}
+    username: ${HUANKAN_DB_USER:huankan}
+    password: ${HUANKAN_DB_PASSWORD}
+    hikari:
+      data-source-properties:
+        ApplicationName: huankan-${server.port}
+  jackson:
+    time-zone: UTC
+  web:
+    resources:
+      add-mappings: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+huankan:
+  token: ${HUANKAN_ADMIN_TOKEN}
+  collector-enabled: ${HUANKAN_COLLECTOR_ENABLED:false}
+  sec-user-agent: ${SEC_USER_AGENT:}
+  sec-enabled: ${SEC_ENABLED:false}
+  sec-contact-email: ${SEC_CONTACT_EMAIL:}
+  sec-ciks: ${SEC_FOLLOWED_CIKS:${SEC_CIKS:}}
